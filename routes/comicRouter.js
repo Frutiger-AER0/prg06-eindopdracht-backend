@@ -5,7 +5,7 @@ import { faker } from '@faker-js/faker';
 const router = express.Router();
 
 router.use((req, res, next) => {
-    console.log("check accept header");
+    console.log(`Method: ${req.method}, URL: ${req.url}`);
     if (req.headers.accept && req.headers.accept === "application/json") {
         next();
     } else {
@@ -19,16 +19,38 @@ router.use((req, res, next) => {
 
 router.get("/", async (req, res) => {
     res.header("Access-Control-Allow-Origin", "*");
-    const comics = await Comic.find({}, '-description');
+    const totalItems = await Comic.countDocuments();
+    const hasLimit = req.query.limit !== undefined;
+    const page = hasLimit ? parseInt(req.query.page) || 1 : 1;
+    const limit = hasLimit ? parseInt(req.query.limit) || 6 : totalItems;
+    const skip = (page - 1) * limit;
+    const totalPages = hasLimit ? Math.ceil(totalItems / limit) : 1;
+    const comics = await Comic.find({}, '-description').skip(skip).limit(limit);
+    const baseUri = process.env.BASE_URI;
+    const paginationLinks = hasLimit ? {
+        first: { page: 1, href: `${baseUri}?page=1&limit=${limit}` },
+        last: { page: totalPages, href:`${baseUri}?page=${totalPages}&limit=${limit}` },
+        previous: page > 1 ? { page: page - 1, href: `${baseUri}?page=${page - 1}&limit=${limit}` } : null,
+        next: page < totalPages ? { page: page + 1, href: `${baseUri}?page=${page + 1}&limit=${limit}` } : null,
+    } : {
+        first: { page: 1, href: `${baseUri}` },
+        last: { page: 1, href: `${baseUri}` },
+        previous: null,
+        next: null,
+    };
+    const selfHref = hasLimit ? `${baseUri}?page=${page}&limit=${limit}` : baseUri;
     res.json({
         items: comics,
         _links: {
-            self: {
-                href: `${process.env.BASE_URI}`,
-            },
-            collection: {
-                href: `${process.env.BASE_URI}`,
-            }
+            self: { href: selfHref },
+            collection: { href: baseUri }
+        },
+        pagination: {
+            currentPage: page,
+            currentItems: comics.length,
+            totalPages,
+            totalItems,
+            _links: paginationLinks
         },
     });
 })
@@ -73,6 +95,9 @@ router.post("/", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
     const comicId = req.params.id;
+    if (!req.body) {
+        return res.status(400).json({ error: "Request body is required" });
+    }
     const { title, description, author, date } = req.body;
     if (!title || !description || !author || !date) {
         return res.status(400).json({ error: "Title, description, author and date are required" });
