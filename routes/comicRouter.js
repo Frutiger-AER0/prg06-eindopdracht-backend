@@ -5,6 +5,7 @@ import { faker } from '@faker-js/faker';
 const router = express.Router();
 
 router.use((req, res, next) => {
+    res.set("Access-Control-Allow-Origin", "*");
     console.log(`Method: ${req.method}, URL: ${req.url}`);
     if (req.headers.accept && req.headers.accept === "application/json") {
         next();
@@ -18,7 +19,6 @@ router.use((req, res, next) => {
 });
 
 router.get("/", async (req, res) => {
-    res.header("Access-Control-Allow-Origin", "*");
     const totalItems = await Comic.countDocuments();
     const hasLimit = req.query.limit !== undefined;
     const page = hasLimit ? parseInt(req.query.page) || 1 : 1;
@@ -131,7 +131,6 @@ router.delete("/:id", async (req, res) => {
 })
 
 router.get("/:id", async (req, res) => {
-    res.header("Access-Control-Allow-Origin", "*");
     const comicId = req.params.id;
     try {
         const comic = await Comic.findById(comicId);
