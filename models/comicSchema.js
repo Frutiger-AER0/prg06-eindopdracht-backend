@@ -6,6 +6,7 @@ const comicSchema = new mongoose.Schema(
         description: { type: String },
         author: { type: String },
         date: { type: Date },
+        image: { type: String },
     }, {
         toJSON: {
             virtuals: true,

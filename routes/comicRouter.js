@@ -1,6 +1,8 @@
 import express from "express";
 import Comic from "../models/comicSchema.js";
 import { faker } from '@faker-js/faker';
+import * as fs from "fs";
+import * as path from "path";
 
 const router = express.Router();
 
@@ -80,11 +82,19 @@ router.options("/", (req, res) => {
 })
 
 router.post("/", async (req, res) => {
-    const { title, description, author, date } = req.body;
+    const { title, description, author, date, image } = req.body;
+    let imageUrl = null;
+    if (image) {
+        const buffer = Buffer.from(image, 'base64');
+        const filename = Date.now() + '.png';
+        const filepath = path.join('public', 'uploads', filename);
+        fs.writeFileSync(filepath, buffer);
+        imageUrl = `/uploads/${filename}`;
+    }
     if (!title || !description || !author || !date) {
         return res.status(400).json({ error: "Title, description, author and date are required" });
     }
-    const comic = new Comic({ title, description, author, date });
+    const comic = new Comic({ title, description, author, date, image: imageUrl });
     try {
         await comic.save();
         res.status(201).json(comic);
@@ -98,14 +108,22 @@ router.put("/:id", async (req, res) => {
     if (!req.body) {
         return res.status(400).json({ error: "Request body is required" });
     }
-    const { title, description, author, date } = req.body;
+    const { title, description, author, date, image } = req.body;
+    let imageUrl = req.body.image;
+    if (image && !image.startsWith('/uploads/')) {
+        const buffer = Buffer.from(image, 'base64');
+        const filename = Date.now() + '.png';
+        const filepath = path.join('public', 'uploads', filename);
+        fs.writeFileSync(filepath, buffer);
+        imageUrl = `/uploads/${filename}`;
+    }
     if (!title || !description || !author || !date) {
         return res.status(400).json({ error: "Title, description, author and date are required" });
     }
     try {
         const comic = await Comic.findByIdAndUpdate(
             comicId,
-            { title, description, author, date, updatedAt: Date.now() },
+            { title, description, author, date, image: imageUrl, updatedAt: Date.now() },
             { new: true }
         );
         if (!comic) {

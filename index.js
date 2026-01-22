@@ -8,6 +8,7 @@ try {
     await mongoose.connect(process.env.MONGODB_URI || "");
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
+    app.use(express.static('public'));
     app.use("/comics", router)
 
     app.listen(process.env.EXPRESS_PORT, () => {
