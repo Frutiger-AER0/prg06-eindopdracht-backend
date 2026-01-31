@@ -8,6 +8,7 @@ const comicSchema = new mongoose.Schema(
         date: { type: Date },
         image: { type: String },
     }, {
+        timestamps: true,
         toJSON: {
             virtuals: true,
             versionKey: false,

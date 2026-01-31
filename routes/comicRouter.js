@@ -21,13 +21,25 @@ router.use((req, res, next) => {
 });
 
 router.get("/", async (req, res) => {
-    const totalItems = await Comic.countDocuments();
+    const filter = {};
+    if (req.query.title) filter.title = new RegExp(req.query.title, 'i');
+    if (req.query.author) filter.author = new RegExp(req.query.author, 'i');
+    if (req.query.date) filter.date = new Date(req.query.date);
+
+    const totalItems = await Comic.countDocuments(filter);
     const hasLimit = req.query.limit !== undefined;
     const page = hasLimit ? parseInt(req.query.page) || 1 : 1;
     const limit = hasLimit ? parseInt(req.query.limit) || 6 : totalItems;
     const skip = (page - 1) * limit;
     const totalPages = hasLimit ? Math.ceil(totalItems / limit) : 1;
-    const comics = await Comic.find({}, '-description').skip(skip).limit(limit);
+    const comics = await Comic.find(filter, '-description').skip(skip).limit(limit);
+    const latestComic = await Comic.findOne(filter).sort({ updatedAt: -1 });
+    const lastModified = latestComic ? latestComic.updatedAt.toUTCString() : new Date().toUTCString();
+
+    if (req.headers['if-modified-since'] && new Date(req.headers['if-modified-since']) >= new Date(lastModified)) {
+        return res.status(304).set('Last-Modified', lastModified).send();
+    }
+
     const baseUri = process.env.BASE_URI;
     const paginationLinks = hasLimit ? {
         first: { page: 1, href: `${baseUri}?page=1&limit=${limit}` },
@@ -41,6 +53,10 @@ router.get("/", async (req, res) => {
         next: null,
     };
     const selfHref = hasLimit ? `${baseUri}?page=${page}&limit=${limit}` : baseUri;
+    res.set({
+        'Cache-Control': 'max-age=3600',
+        'Last-Modified': lastModified
+    });
     res.json({
         items: comics,
         _links: {
