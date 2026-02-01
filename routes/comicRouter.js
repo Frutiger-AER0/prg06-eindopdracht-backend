@@ -40,25 +40,51 @@ router.get("/", async (req, res) => {
         return res.status(304).set('Last-Modified', lastModified).send();
     }
 
-    const baseUri = process.env.BASE_URI;
+    // Basis URI voor de links omgebouwd vanwege issues met een trailing slash
+    const base = process.env.BASE_URI || `${req.protocol}://${req.get('host')}${req.baseUrl}`;
+    const baseUri = String(base).replace(/\/+$/, '');
+
+    const baseQuery = {};
+    if (req.query.title) baseQuery.title = req.query.title;
+    if (req.query.author) baseQuery.author = req.query.author;
+    if (req.query.date) baseQuery.date = req.query.date;
+
+    // Helper functie voor het maken van hrefs voor mijn pagination omdat het anders onoverzichtelijk werdt.
+    const makeHref = (opts = {}) => {
+        const params = { ...baseQuery };
+        if (opts.addPage && opts.page !== undefined) params.page = String(opts.page);
+        if (opts.addLimit && opts.limit !== undefined) params.limit = String(opts.limit);
+        const qs = new URLSearchParams(params).toString();
+        return `${baseUri}${qs ? '?' + qs : ''}`;
+    };
+
     const paginationLinks = hasLimit ? {
-        first: { page: 1, href: `${baseUri}?page=1&limit=${limit}` },
-        last: { page: totalPages, href:`${baseUri}?page=${totalPages}&limit=${limit}` },
-        previous: page > 1 ? { page: page - 1, href: `${baseUri}?page=${page - 1}&limit=${limit}` } : null,
-        next: page < totalPages ? { page: page + 1, href: `${baseUri}?page=${page + 1}&limit=${limit}` } : null,
+        first: { page: 1, href: makeHref({ addPage: true, page: 1, addLimit: true, limit }) },
+        last: { page: totalPages, href: makeHref({ addPage: true, page: totalPages, addLimit: true, limit }) },
+        previous: page > 1 ? { page: page - 1, href: makeHref({ addPage: true, page: page - 1, addLimit: true, limit }) } : null,
+        next: page < totalPages ? { page: page + 1, href: makeHref({ addPage: true, page: page + 1, addLimit: true, limit }) } : null,
     } : {
-        first: { page: 1, href: `${baseUri}` },
-        last: { page: 1, href: `${baseUri}` },
+        first: { page: 1, href: makeHref({}) },
+        last: { page: 1, href: makeHref({}) },
         previous: null,
         next: null,
     };
-    const selfHref = hasLimit ? `${baseUri}?page=${page}&limit=${limit}` : baseUri;
+
+    const selfHref = hasLimit ? makeHref({ addPage: true, page, addLimit: true, limit }) : makeHref({});
+
+    const items = comics.map(c => {
+        const obj = (typeof c.toJSON === 'function') ? c.toJSON() : JSON.parse(JSON.stringify(c));
+        obj._links = obj._links || {};
+        obj._links.collection = { href: baseUri };
+        return obj;
+    });
+
     res.set({
         'Cache-Control': 'max-age=3600',
         'Last-Modified': lastModified
     });
     res.json({
-        items: comics,
+        items,
         _links: {
             self: { href: selfHref },
             collection: { href: baseUri }
@@ -171,6 +197,22 @@ router.get("/:id", async (req, res) => {
         if (!comic) {
             return res.status(404).json({ error: "Comic not found" });
         }
+
+        const lastModified = (comic.updatedAt || comic.createdAt || new Date()).toUTCString();
+
+        const imsHeader = req.headers['if-modified-since'];
+        if (imsHeader) {
+            const ims = new Date(imsHeader);
+            if (!isNaN(ims.getTime()) && ims >= new Date(lastModified)) {
+                return res.status(304).set('Last-Modified', lastModified).send();
+            }
+        }
+
+        res.set({
+            'Cache-Control': 'max-age=3600',
+            'Last-Modified': lastModified
+        });
+
         res.json(comic);
     } catch (error) {
         res.status(500).json({ error: "Server error" });
